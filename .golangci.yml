@@ -11,11 +11,6 @@ linters:
     - misspell
     - nakedret
     - revive
-    - errcheck
-    - staticcheck
-    - govet
-    - ineffassign
-    - unused
   exclusions:
     generated: lax
     presets:

@@ -10,13 +10,11 @@ import (
 	"strings"
 
 	"github.com/github/github-mcp-server/pkg/github"
-	"github.com/github/github-mcp-server/pkg/lockdown"
 	"github.com/github/github-mcp-server/pkg/raw"
 	"github.com/github/github-mcp-server/pkg/toolsets"
 	"github.com/github/github-mcp-server/pkg/translations"
-	gogithub "github.com/google/go-github/v79/github"
-	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	gogithub "github.com/google/go-github/v74/github"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/shurcooL/githubv4"
 	"github.com/spf13/cobra"
 )
@@ -66,8 +64,7 @@ func generateReadmeDocs(readmePath string) error {
 	t, _ := translations.TranslationHelper()
 
 	// Create toolset group with mock clients
-	repoAccessCache := lockdown.GetInstance(nil)
-	tsg := github.DefaultToolsetGroup(false, mockGetClient, mockGetGQLClient, mockGetRawClient, t, 5000, github.FeatureFlags{}, repoAccessCache)
+	tsg := github.DefaultToolsetGroup(false, mockGetClient, mockGetGQLClient, mockGetRawClient, t)
 
 	// Generate toolsets documentation
 	toolsetsDoc := generateToolsetsDoc(tsg)
@@ -227,16 +224,7 @@ func generateToolDoc(tool mcp.Tool) string {
 	lines = append(lines, fmt.Sprintf("- **%s** - %s", tool.Name, tool.Annotations.Title))
 
 	// Parameters
-	if tool.InputSchema == nil {
-		lines = append(lines, "  - No parameters required")
-		return strings.Join(lines, "\n")
-	}
-	schema, ok := tool.InputSchema.(*jsonschema.Schema)
-	if !ok || schema == nil {
-		lines = append(lines, "  - No parameters required")
-		return strings.Join(lines, "\n")
-	}
-
+	schema := tool.InputSchema
 	if len(schema.Properties) > 0 {
 		// Get parameter names and sort them for deterministic order
 		var paramNames []string
@@ -253,21 +241,29 @@ func generateToolDoc(tool mcp.Tool) string {
 				requiredStr = "required"
 			}
 
-			var typeStr, description string
-
 			// Get the type and description
-			switch prop.Type {
-			case "array":
-				if prop.Items != nil {
-					typeStr = prop.Items.Type + "[]"
-				} else {
-					typeStr = "array"
-				}
-			default:
-				typeStr = prop.Type
-			}
+			typeStr := "unknown"
+			description := ""
 
-			description = prop.Description
+			if propMap, ok := prop.(map[string]interface{}); ok {
+				if typeVal, ok := propMap["type"].(string); ok {
+					if typeVal == "array" {
+						if items, ok := propMap["items"].(map[string]interface{}); ok {
+							if itemType, ok := items["type"].(string); ok {
+								typeStr = itemType + "[]"
+							}
+						} else {
+							typeStr = "array"
+						}
+					} else {
+						typeStr = typeVal
+					}
+				}
+
+				if desc, ok := propMap["description"].(string); ok {
+					description = desc
+				}
+			}
 
 			paramLine := fmt.Sprintf("  - `%s`: %s (%s, %s)", propName, description, typeStr, requiredStr)
 			lines = append(lines, paramLine)
@@ -306,8 +302,7 @@ func generateRemoteToolsetsDoc() string {
 	t, _ := translations.TranslationHelper()
 
 	// Create toolset group with mock clients
-	repoAccessCache := lockdown.GetInstance(nil)
-	tsg := github.DefaultToolsetGroup(false, mockGetClient, mockGetGQLClient, mockGetRawClient, t, 5000, github.FeatureFlags{}, repoAccessCache)
+	tsg := github.DefaultToolsetGroup(false, mockGetClient, mockGetGQLClient, mockGetRawClient, t)
 
 	// Generate table header
 	buf.WriteString("| Name           | Description                                      | API URL                                               | 1-Click Install (VS Code)                                                                                                                                                                                                 | Read-only Link                                                                                                 | 1-Click Read-only Install (VS Code)                                                                                                                                                                                                 |\n")
